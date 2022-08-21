@@ -1,0 +1,264 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2022-present travis134
+
+. /etc/profile
+
+export TERM=linux
+
+#
+# Globals
+#
+TITLE="Doom Game Scan"
+WADS_DB=""
+DOOMPATH="/storage/roms/doom"
+ALL_WADS=()
+ALL_MODS=()
+
+BASE_WAD=""
+EXTRA_WADS=()
+MODS=()
+
+log() {
+    local message
+    local ts
+
+    message=$1
+    ts=$(date +"%Y-%m-%dT%H:%M:%S%z")
+
+    echo "${ts}: ${message}" >&2
+}
+
+start() {
+    log "Started Doom Game Scan"
+
+    chmod 666 /dev/tty1
+    chmod 666 /dev/uinput
+    gptokeyb -c controls.gptk &
+
+    dialog --backtitle "${TITLE}" --infobox "Initializing, please wait." 7 50 2>&1 >/dev/tty1
+
+    log "Reading WADs DB"
+    WADS_DB=$(cat wads_db.json)
+
+    log "Reading all WADs"
+    while IFS= read -r -d $'\0'; do
+        ALL_WADS+=("$REPLY")
+    done < <(find "${DOOMPATH}" -mindepth 1 -iname "*.wad" -print0)
+
+    log "Reading all mods"
+    while IFS= read -r -d $'\0'; do
+        ALL_MODS+=("$REPLY")
+    done < <(find "${DOOMPATH}" -mindepth 1 -iname "*.pk3" -print0)
+
+    main_menu
+}
+
+main_menu() {
+    local cmd
+    local options
+    local index
+    local status
+
+    cmd=(dialog --backtitle "${TITLE}" --title " [ Main Menu ] " --no-cancel --menu "D-pad to move, A for <enter>, B for <space>" "15" "50" "15")
+    options=(
+        0 "Create Doom config"
+        1 "Exit"
+    )
+    index=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty1)
+    status=$?
+    log "Status: ${status}, Desired index: ${index}"
+
+    case ${status} in
+    0)
+        case ${index} in
+        0) base_wad_menu ;;
+        *) exit 0 ;;
+        esac
+        ;;
+    *) exit 1 ;;
+    esac
+}
+
+base_wad_menu() {
+    local cmd
+    local options
+    local i
+    local name
+    local index
+    local status
+
+    log "Selected: Create Doom config"
+
+    if ((!${#ALL_WADS[@]})); then
+        dialog --backtitle "${TITLE}" --msgbox "No valid WADs found in ${DOOMPATH}" 7 50 2>&1 >/dev/tty1
+        exit 0
+    fi
+
+    cmd=(dialog --backtitle "${TITLE}" --title " [ WADs Menu ] " --cancel-label "Back" --menu "Pick a base WAD" "15" "50" "15")
+    options=()
+    for i in "${!ALL_WADS[@]}"; do
+        name=${ALL_WADS[$i]#"${DOOMPATH}/"}
+        options+=("${i}" "${name}")
+    done
+    index=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty1)
+    status=$?
+    log "Status: ${status}, Desired index: ${index}"
+
+    BASE_WAD="${ALL_WADS[$index]}"
+
+    case ${status} in
+    0) extra_wads_menu ;;
+    1) main_menu ;;
+    *) exit 1 ;;
+    esac
+}
+
+extra_wads_menu() {
+    local cmd
+    local options
+    local i
+    local name
+    local selected
+    local status
+
+    log "Selected Base WAD: $BASE_WAD"
+
+    if ((!${#ALL_WADS[@]})); then
+        dialog --backtitle "${TITLE}" --msgbox "No valid WADs found in ${DOOMPATH}" 7 50 2>&1 >/dev/tty1
+        exit 0
+    fi
+
+    cmd=(dialog --backtitle "${TITLE}" --title " [ Extra WADs Menu ] " --cancel-label "Back" --checklist "Pick any extra WADs" "15" "50" "15")
+    options=()
+    for i in "${!ALL_WADS[@]}"; do
+        name=${ALL_WADS[$i]#"${DOOMPATH}/"}
+        options+=("${i}" "${name}" "off")
+    done
+    selected=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty1)
+    status=$?
+    log "Status: ${status}, Selected: ${selected}"
+
+    EXTRA_WADS=()
+    for index in ${selected}; do
+        EXTRA_WADS+=("${ALL_WADS[$index]}")
+    done
+
+    case ${status} in
+    0) mods_menu ;;
+    1) base_wad_menu ;;
+    *) exit 1 ;;
+    esac
+}
+
+mods_menu() {
+    local cmd
+    local options
+    local i
+    local name
+    local selected
+    local status
+
+    log "Selected N Extra WADs: ${#EXTRA_WADS[@]}"
+
+    if ((!${#ALL_MODS[@]})); then
+        create_doom_file
+        return
+    fi
+
+    cmd=(dialog --backtitle "${TITLE}" --title " [ Mods Menu ] " --cancel-label "Back" --checklist "Pick any Mods" "15" "50" "15")
+    options=()
+    for i in "${!ALL_MODS[@]}"; do
+        name=${ALL_MODS[$i]#"${DOOMPATH}/"}
+        options+=("${i}" "${name}" "off")
+    done
+    selected=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty1)
+    status=$?
+    log "Status: ${status}, Selected: ${selected}"
+
+    MODS=()
+    for index in ${selected}; do
+        MODS+=("${ALL_MODS[$index]}")
+    done
+
+    case ${status} in
+    0) create_doom_file ;;
+    1) extra_wads_menu ;;
+    *) exit 1 ;;
+    esac
+}
+
+create_doom_file() {
+    local base_wad_filename
+    local doom_filename
+    local base_wad_sha1
+    local base_wad_name
+    local file
+    local wad
+    local mod
+
+    log "Selected N mods: ${#MODS[@]}"
+
+    base_wad_filename="$(basename "${BASE_WAD}")"
+    doom_filename="${base_wad_filename%.*}"
+    base_wad_sha1=$(sha1sum "${BASE_WAD}" | awk '{ print $1 }')
+    base_wad_name=$(
+        echo "${WADS_DB}" |
+            jq -r --arg base_wad_sha1 "${base_wad_sha1}" '.[$base_wad_sha1] // empty'
+    )
+    if [[ -n "${base_wad_name}" ]]; then
+        doom_filename="${base_wad_name}"
+    fi
+    if ((${#MODS[@]})); then
+        doom_filename+=" (mod)"
+    fi
+    doom_filename+=".doom"
+
+    file="${DOOMPATH}/${doom_filename}"
+    echo "IWAD=${BASE_WAD}" >"${file}"
+
+    for wad in "${EXTRA_WADS[@]}"; do
+        echo "IWAD=${wad}" >>"${file}"
+    done
+
+    for mod in "${MODS[@]}"; do
+        echo "MOD=${mod}" >>"${file}"
+    done
+
+    echo "-- end --" >>"${file}"
+
+    created_doom_file "${doom_filename}"
+}
+
+created_doom_file() {
+    local doom_filename
+    local cmd
+    local options
+    local status
+
+    doom_filename=$1
+
+    log "Created ${doom_filename}"
+
+    dialog --backtitle "${TITLE}" --title " [ ${doom_filename} ] " --yes-label "Exit" --no-label "Create more" --yesno "Successfully created Doom config. Do you want to exit so you can play it now?" 15 50 2>&1 >/dev/tty1
+    status=$?
+    log "Status: ${status}"
+
+    case ${status} in
+    0) exit 1 ;;
+    *) base_wad_menu ;;
+    esac
+}
+
+stop() {
+    log "Stopping Doom Game Scanner"
+
+    kill -9 $(pidof gptokeyb)
+    systemctl restart emustation
+    clear >/dev/tty11
+}
+
+clear
+trap stop EXIT
+start
