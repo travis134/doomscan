@@ -216,13 +216,23 @@ create_doom_file() {
     doom_filename+=".doom"
 
     file="${DOOMPATH}/${doom_filename}"
+
+    if [[ "${BASE_WAD}" =~ \ |\' ]]; then
+        BASE_WAD="\"${BASE_WAD}\""
+    fi
     echo "IWAD=${BASE_WAD}" >"${file}"
 
     for wad in "${EXTRA_WADS[@]}"; do
+        if [[ "${wad}" =~ \ |\' ]]; then
+            wad="\"${wad}\""
+        fi
         echo "IWAD=${wad}" >>"${file}"
     done
 
     for mod in "${MODS[@]}"; do
+        if [[ "${mod}" =~ \ |\' ]]; then
+            wad="\"${mod}\""
+        fi
         echo "MOD=${mod}" >>"${file}"
     done
 
