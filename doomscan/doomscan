@@ -254,6 +254,7 @@ created_doom_file() {
 stop() {
     log "Stopping Doom Game Scanner"
 
+    # shellcheck disable=SC2046
     kill -9 $(pidof gptokeyb)
     systemctl restart emustation
     clear >/dev/tty1
