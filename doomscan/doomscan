@@ -231,7 +231,7 @@ create_doom_file() {
 
     for mod in "${MODS[@]}"; do
         if [[ "${mod}" =~ \ |\' ]]; then
-            wad="\"${mod}\""
+            mod="\"${mod}\""
         fi
         echo "MOD=${mod}" >>"${file}"
     done
