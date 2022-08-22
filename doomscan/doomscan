@@ -44,12 +44,12 @@ start() {
 
     log "Reading all WADs"
     while IFS= read -r -d $'\0'; do
-        ALL_WADS+=("$REPLY")
+        ALL_WADS+=("${REPLY}")
     done < <(find "${DOOMPATH}" -mindepth 1 -iname "*.wad" -print0)
 
     log "Reading all mods"
     while IFS= read -r -d $'\0'; do
-        ALL_MODS+=("$REPLY")
+        ALL_MODS+=("${REPLY}")
     done < <(find "${DOOMPATH}" -mindepth 1 -iname "*.pk3" -print0)
 
     main_menu
@@ -99,14 +99,14 @@ base_wad_menu() {
     cmd=(dialog --backtitle "${TITLE}" --title " [ WADs Menu ] " --cancel-label "Back" --menu "Pick a base WAD" "15" "50" "15")
     options=()
     for i in "${!ALL_WADS[@]}"; do
-        name=${ALL_WADS[$i]#"${DOOMPATH}/"}
+        name=${ALL_WADS[${i}]#"${DOOMPATH}/"}
         options+=("${i}" "${name}")
     done
     index=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty1)
     status=$?
     log "Status: ${status}, Desired index: ${index}"
 
-    BASE_WAD="${ALL_WADS[$index]}"
+    BASE_WAD="${ALL_WADS[${index}]}"
 
     case ${status} in
     0) extra_wads_menu ;;
@@ -123,7 +123,7 @@ extra_wads_menu() {
     local selected
     local status
 
-    log "Selected Base WAD: $BASE_WAD"
+    log "Selected Base WAD: ${BASE_WAD}"
 
     if ((!${#ALL_WADS[@]})); then
         dialog --backtitle "${TITLE}" --msgbox "No valid WADs found in ${DOOMPATH}" 7 50 2>&1 >/dev/tty1
@@ -133,7 +133,7 @@ extra_wads_menu() {
     cmd=(dialog --backtitle "${TITLE}" --title " [ Extra WADs Menu ] " --cancel-label "Back" --checklist "Pick any extra WADs" "15" "50" "15")
     options=()
     for i in "${!ALL_WADS[@]}"; do
-        name=${ALL_WADS[$i]#"${DOOMPATH}/"}
+        name=${ALL_WADS[${i}]#"${DOOMPATH}/"}
         options+=("${i}" "${name}" "off")
     done
     selected=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty1)
@@ -142,7 +142,7 @@ extra_wads_menu() {
 
     EXTRA_WADS=()
     for index in ${selected}; do
-        EXTRA_WADS+=("${ALL_WADS[$index]}")
+        EXTRA_WADS+=("${ALL_WADS[${index}]}")
     done
 
     case ${status} in
@@ -170,7 +170,7 @@ mods_menu() {
     cmd=(dialog --backtitle "${TITLE}" --title " [ Mods Menu ] " --cancel-label "Back" --checklist "Pick any Mods" "15" "50" "15")
     options=()
     for i in "${!ALL_MODS[@]}"; do
-        name=${ALL_MODS[$i]#"${DOOMPATH}/"}
+        name=${ALL_MODS[${i}]#"${DOOMPATH}/"}
         options+=("${i}" "${name}" "off")
     done
     selected=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty1)
@@ -179,7 +179,7 @@ mods_menu() {
 
     MODS=()
     for index in ${selected}; do
-        MODS+=("${ALL_MODS[$index]}")
+        MODS+=("${ALL_MODS[${index}]}")
     done
 
     case ${status} in
