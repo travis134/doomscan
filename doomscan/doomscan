@@ -116,6 +116,8 @@ base_wad_menu() {
 }
 
 extra_wads_menu() {
+    local other_wads
+    local target
     local cmd
     local options
     local i
@@ -130,10 +132,18 @@ extra_wads_menu() {
         exit 0
     fi
 
+    other_wads=("${ALL_WADS[@]}")
+    for i in "${!other_wads[@]}"; do
+        if [[ ${other_wads[i]} = "${BASE_WAD}" ]]; then
+            unset 'other_wads[i]'
+            break
+        fi
+    done
+
     cmd=(dialog --backtitle "${TITLE}" --title " [ Extra WADs Menu ] " --cancel-label "Back" --checklist "Pick any extra WADs" "15" "50" "15")
     options=()
-    for i in "${!ALL_WADS[@]}"; do
-        name=${ALL_WADS[${i}]#"${DOOMPATH}/"}
+    for i in "${!other_wads[@]}"; do
+        name=${other_wads[${i}]#"${DOOMPATH}/"}
         options+=("${i}" "${name}" "off")
     done
     selected=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty1)
@@ -142,7 +152,7 @@ extra_wads_menu() {
 
     EXTRA_WADS=()
     for index in ${selected}; do
-        EXTRA_WADS+=("${ALL_WADS[${index}]}")
+        EXTRA_WADS+=("${other_wads[${index}]}")
     done
 
     case ${status} in
