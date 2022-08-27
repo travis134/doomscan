@@ -14,6 +14,7 @@ TITLE="Doom Game Scan"
 WADS_DB=""
 DOOMPATH="/storage/roms/doom"
 ALL_WADS=()
+ALL_WAD_NAME=()
 ALL_MODS=()
 
 BASE_WAD=""
@@ -28,6 +29,28 @@ log() {
     ts=$(date +"%Y-%m-%dT%H:%M:%S%z")
 
     echo "${ts}: ${message}" >&2
+}
+
+wad_name() {
+    local wad
+    local sha1
+    local name
+    local basename
+
+    wad=$1
+
+    sha1=$(sha1sum "${wad}" | awk '{ print $1 }')
+    name=$(
+        echo "${WADS_DB}" |
+            jq -r --arg sha1 "${sha1}" '.[$sha1] // empty'
+    )
+
+    if [ -z "${name}" ]; then
+        basename="$(basename "${wad}")"
+        name="${basename%.*}"
+    fi
+
+    echo "${name}"
 }
 
 start() {
@@ -45,6 +68,7 @@ start() {
     log "Reading all WADs"
     while IFS= read -r -d $'\0'; do
         ALL_WADS+=("${REPLY}")
+        ALL_WAD_NAMES+=("$(wad_name "${REPLY}")")
     done < <(find "${DOOMPATH}" -mindepth 1 -iname "*.wad" -print0)
 
     log "Reading all mods"
@@ -96,10 +120,10 @@ base_wad_menu() {
         exit 0
     fi
 
-    cmd=(dialog --backtitle "${TITLE}" --title " [ WADs Menu ] " --cancel-label "Back" --menu "Pick a base WAD" "15" "50" "15")
+    cmd=(dialog --backtitle "${TITLE}" --title " [ WADs Menu ] " --cancel-label "Back" --menu "Pick a base WAD" "15" "0" "15")
     options=()
     for i in "${!ALL_WADS[@]}"; do
-        name=${ALL_WADS[${i}]#"${DOOMPATH}/"}
+        name=${ALL_WAD_NAMES[${i}]}
         options+=("${i}" "${name}")
     done
     index=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty1)
@@ -140,7 +164,7 @@ extra_wads_menu() {
         fi
     done
 
-    cmd=(dialog --backtitle "${TITLE}" --title " [ Extra WADs Menu ] " --cancel-label "Back" --checklist "Pick any extra WADs" "15" "50" "15")
+    cmd=(dialog --backtitle "${TITLE}" --title " [ Extra WADs Menu ] " --cancel-label "Back" --checklist "Pick any extra WADs" "15" "0" "15")
     options=()
     for i in "${!other_wads[@]}"; do
         name=${other_wads[${i}]#"${DOOMPATH}/"}
@@ -177,7 +201,7 @@ mods_menu() {
         return
     fi
 
-    cmd=(dialog --backtitle "${TITLE}" --title " [ Mods Menu ] " --cancel-label "Back" --checklist "Pick any Mods" "15" "50" "15")
+    cmd=(dialog --backtitle "${TITLE}" --title " [ Mods Menu ] " --cancel-label "Back" --checklist "Pick any Mods" "15" "0" "15")
     options=()
     for i in "${!ALL_MODS[@]}"; do
         name=${ALL_MODS[${i}]#"${DOOMPATH}/"}
@@ -200,31 +224,18 @@ mods_menu() {
 }
 
 create_doom_file() {
-    local base_wad_filename
     local doom_filename
-    local base_wad_sha1
-    local base_wad_name
     local file
     local wad
     local mod
 
     log "Selected N mods: ${#MODS[@]}"
 
-    base_wad_filename="$(basename "${BASE_WAD}")"
-    doom_filename="${base_wad_filename%.*}"
-    base_wad_sha1=$(sha1sum "${BASE_WAD}" | awk '{ print $1 }')
-    base_wad_name=$(
-        echo "${WADS_DB}" |
-            jq -r --arg base_wad_sha1 "${base_wad_sha1}" '.[$base_wad_sha1] // empty'
-    )
-    if [[ -n "${base_wad_name}" ]]; then
-        doom_filename="${base_wad_name}"
-    fi
+    doom_filename="$(wad_name "${BASE_WAD}")"
     if ((${#MODS[@]})); then
         doom_filename+=" (mod)"
     fi
     doom_filename+=".doom"
-
     file="${DOOMPATH}/${doom_filename}"
 
     if [[ "${BASE_WAD}" =~ \ |\' ]]; then
